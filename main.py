@@ -25,9 +25,6 @@ def process_episode(episode_data, output_dir, series_name=None):
         # Construct filename
         filename = None
         if series_name:
-            # Format: Series Name - Episode XX.mp4
-            # Padding episode number with 0 if needed (e.g. 01, 02) might be nice but simple int is fine too
-            # Let's pad to 2 digits at least
             filename = f"{series_name} ep{ep_num:02d}.mp4"
             filename = sanitize_filename(filename)
 
@@ -86,7 +83,12 @@ def main():
             print(f"Last Episode: {last_ep}")
 
             # Ask for Series Name
-            series_name = input("Enter Series Name (for filename): ").strip()
+            parsed_url = ""
+            if url.endswith("/"):
+                parsed_url = url[:-1]
+            else:
+                parsed_url = url
+            series_name = str(args.output) or parsed_url.split("/")[-1]
             if not series_name:
                 series_name = "Anime"  # Default fallback
 
