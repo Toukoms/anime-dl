@@ -1,6 +1,7 @@
 import re
 import urllib.parse
 import urllib.request
+import time
 
 def _fetch(url, headers=None):
     req = urllib.request.Request(url)
@@ -43,9 +44,31 @@ def _find_get_video_path(html):
     return None
 
 def extract(url):
-    html, final_embed = _fetch(url)
+    # Retry fetching the embed page if necessary
+    # Sometimes the embed page itself loads slowly or anti-bot checks are present.
+    
+    max_retries = 3
+    retry_delay = 5
+    
+    html = ""
+    final_embed = url
+    
+    for attempt in range(max_retries):
+        try:
+            html, final_embed = _fetch(url)
+            # Basic check if we got a valid page or just a loading screen
+            if "get_video" in html:
+                break
+            time.sleep(retry_delay)
+        except Exception:
+            if attempt == max_retries - 1:
+                raise
+            time.sleep(retry_delay)
+
     path = _find_get_video_path(html)
     if not path:
+        # Debugging: Dump a bit of HTML to see what's wrong if needed
+        # print(f"DEBUG HTML: {html[:500]}...")
         raise RuntimeError("Streamtape get_video path not found")
     
     # Clean up path if it contains the domain but is treated as relative
