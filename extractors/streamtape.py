@@ -1,91 +1,67 @@
+import re
 import requests
-from bs4 import BeautifulSoup
-import time
-from urllib.parse import urljoin
 
 
-def extract(url):
+def extract(url) -> str:
+    """
+    Extracts the direct video URL from a Streamtape URL.
+    Fetches the page, solves the obfuscation to get the /get_video URL,
+    and then follows the redirect to get the final tapecontent.net URL.
+    """
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
     }
 
-    session = requests.Session()
-    session.headers.update(headers)
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        html = response.text
 
-    # 1. Fetch the page
-    resp = session.get(url)
-    resp.raise_for_status()
+        # Regex to capture the obfuscation logic for botlink
+        # Pattern: document.getElementById('botlink').innerHTML = 'PREFIX' + ('TOKEN_STRING').substring(OFFSET);
+        # Example: document.getElementById('botlink').innerHTML = '//streamtape.com/get_v'+ ('xyzaideo?id=...').substring(4);
 
-    soup = BeautifulSoup(resp.text, "html.parser")
+        pattern = r"document\.getElementById\('botlink'\)\.innerHTML\s*=\s*['\"](.*?)['\"]\s*\+\s*\(['\"]([^'\"]+)['\"]\)\.substring\(\s*(\d+)\s*\)"
 
-    # 2. Find id="botlink"
-    botlink = soup.find(id="botlink")
-    if not botlink:
-        raise RuntimeError("Streamtape botlink element not found")
+        match = re.search(pattern, html)
+        if not match:
+            # Fallback or error
+            print(
+                "Error: Could not find botlink obfuscation pattern in Streamtape page."
+            )
+            return None
 
-    # Extract the URL from the text content of the element (e.g. span or div)
-    # User tip: link is in children of the element not in href
-    link = botlink.get_text().strip()
+        prefix = match.group(1)
+        token_string = match.group(2)
+        offset = int(match.group(3))
 
-    if not link:
-        # Fallback: check href if it happens to be an anchor tag
-        if botlink.name == "a":
-            link = botlink.get("href")
+        real_token = token_string[offset:]
+        full_url_path = prefix + real_token
+
+        # Ensure it starts with https:
+        if full_url_path.startswith("//"):
+            full_url = "https:" + full_url_path
+        elif full_url_path.startswith("/"):
+            full_url = "https://streamtape.com" + full_url_path
         else:
-            a_child = botlink.find("a")
-            if a_child:
-                link = a_child.get("href")
+            full_url = full_url_path
 
-    if not link:
-        raise RuntimeError("Could not extract URL from botlink")
+        # Add &stream=1 to trigger the redirect to the video file
+        final_url = full_url + "&stream=1"
 
-    print(f"- botlink url found: {link}")
+        # Follow the redirect to get the actual video URL (tapecontent.net)
+        # We use stream=True to avoid downloading the content
+        r = requests.get(
+            final_url, headers=headers, allow_redirects=False, stream=True, timeout=10
+        )
 
-    # Handle relative URLs
-    if link.startswith("//"):
-        link = "https:" + link
-    elif link.startswith("/"):
-        link = urljoin(url, link)
+        if r.status_code in (301, 302, 303, 307, 308):
+            redirect_url = r.headers.get("Location")
+            return redirect_url
+        else:
+            # If no redirect, maybe the URL is already the direct link or something else
+            return final_url
 
-    # 3. Follow redirect to find tapecontent.net
-    print(f"Found intermediate link: {link}")
-
-    # We loop because sometimes there's a 'waiting' page
-    max_retries = 5
-    for i in range(max_retries):
-        try:
-            # allow_redirects=True is default for get, but explicit here.
-            # stream=True to avoid downloading the video content if we find it.
-            r = session.get(link, allow_redirects=True, stream=True)
-            final_url = r.url
-
-            if "tapecontent.net" in final_url:
-                r.close()
-                print(f"- direct link url found: {final_url}")
-                return final_url
-
-            # Check if it's the video content even if domain doesn't match exactly (just in case)
-            content_type = r.headers.get("Content-Type", "")
-            if "video" in content_type:
-                r.close()
-                print(f"- direct link url found: {final_url}")
-                return final_url
-
-            # If it's HTML, it might be the waiting page
-            if "text/html" in content_type:
-                # We need to read content to check for errors, but don't consume too much
-                # Just closing and retrying after wait
-                r.close()
-                print(f"Waiting for video redirect... (Attempt {i + 1}/{max_retries})")
-                time.sleep(3)
-                continue
-
-            r.close()
-
-        except Exception as e:
-            print(f"Error following redirect: {e}")
-            time.sleep(2)
-
-    # If we fall through, return the last link we had, hoping it works
-    print(f"- direct link url found: {link}")
-    return link
+    except Exception as e:
+        print(f"Error extracting Streamtape URL: {e}")
+        return None

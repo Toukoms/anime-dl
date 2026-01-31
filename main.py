@@ -29,7 +29,7 @@ def process_episode(episode_data, output_dir, series_name=None):
             # Format: Series Name - Episode XX.mp4
             # Padding episode number with 0 if needed (e.g. 01, 02) might be nice but simple int is fine too
             # Let's pad to 2 digits at least
-            filename = f"{series_name} - Episode {ep_num:02d}.mp4"
+            filename = f"{series_name} ep{ep_num:02d}.mp4"
             filename = sanitize_filename(filename)
 
         # 3. Download
