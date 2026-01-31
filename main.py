@@ -21,7 +21,6 @@ def process_episode(episode_data, output_dir, series_name=None):
 
         # 2. Get direct video URL from Streamtape
         direct_url = extract_streamtape(streamtape_url)
-        print(f"Direct Link: {direct_url}")
 
         # Construct filename
         filename = None
@@ -33,7 +32,6 @@ def process_episode(episode_data, output_dir, series_name=None):
             filename = sanitize_filename(filename)
 
         # 3. Download
-        print(f"- download {filename if filename else 'video'}")
         path = download_file(
             direct_url, output_dir=output_dir, output_filename=filename
         )

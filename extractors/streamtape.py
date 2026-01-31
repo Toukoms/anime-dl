@@ -57,9 +57,11 @@ def extract(url) -> str:
 
         if r.status_code in (301, 302, 303, 307, 308):
             redirect_url = r.headers.get("Location")
+            print(f"- direct link: {redirect_url}")
             return redirect_url
         else:
             # If no redirect, maybe the URL is already the direct link or something else
+            print(f"- direct link: {final_url}")
             return final_url
 
     except Exception as e:
