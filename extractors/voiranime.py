@@ -1,13 +1,15 @@
-import re
-import json
-import urllib.parse
-import urllib.request
+import requests
+from bs4 import BeautifulSoup
+
 
 def _fetch(url):
-    req = urllib.request.Request(url)
-    req.add_header("User-Agent", "Mozilla/5.0")
-    with urllib.request.urlopen(req) as resp:
-        return resp.read().decode("utf-8", errors="ignore")
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    }
+    resp = requests.get(url, headers=headers)
+    resp.raise_for_status()
+    return resp.text
+
 
 def get_anime_episodes(anime_url):
     """
@@ -15,128 +17,71 @@ def get_anime_episodes(anime_url):
     List is sorted by episode number.
     """
     html = _fetch(anime_url)
-    
+    soup = BeautifulSoup(html, "html.parser")
+
     # Normalize anime URL to ensure no trailing slash for easier matching
     if anime_url.endswith("/"):
         anime_url = anime_url[:-1]
-    
-    # Find all links that look like episodes
-    # Expected pattern: href=".../anime/slug/slug-NUMBER-vf/"
-    # We look for links starting with the anime_url
-    
+
     episodes = []
     seen_urls = set()
-    
-    # Pattern to find links. 
-    # We want links that start with the anime_url but have something after it.
-    # Usually: anime_url + "/" + ...
-    
-    # We can be a bit loose: href="(ANIME_URL/[^"]+)"
-    # Then we try to extract number from that URL.
-    
-    base_pattern = re.escape(anime_url)
-    # Regex to find hrefs starting with the anime url
-    matches = re.finditer(r'href=["\'](' + base_pattern + r'/[^"\']+)["\']', html)
-    
-    for m in matches:
-        url = m.group(1)
+
+    # Find all links that look like episodes
+    for a in soup.find_all("a", href=True):
+        url = a["href"]
+
+        # We look for links starting with the anime_url
+        if not url.startswith(anime_url):
+            continue
+
         if url in seen_urls:
             continue
-            
+
         # Try to extract episode number
         # Usually the last number in the URL path
-        # remove trailing slash
         clean_url = url.rstrip("/")
         parts = clean_url.split("-")
-        
+
         # Look for a number in the last few parts
         num = None
         for part in reversed(parts):
             if part.isdigit():
                 num = int(part)
                 break
-        
+
         if num is not None:
-            # We assume it's a valid episode link if we found a number
-            episodes.append((num, url))
+            # Append host parameter to force Streamtape player
+            if "?" in url:
+                full_url = url + "&host=LECTEUR%20Stape"
+            else:
+                full_url = url + "?host=LECTEUR%20Stape"
+
+            episodes.append((num, full_url))
             seen_urls.add(url)
-            
+
     # Sort by episode number
     episodes.sort(key=lambda x: x[0])
-    
+
     return episodes
+
 
 def get_streamtape_url(url):
     html = _fetch(url)
-    
-    # Extract host parameter
-    parsed = urllib.parse.urlparse(url)
-    params = urllib.parse.parse_qs(parsed.query)
-    host = params.get('host', [None])[0]
-    
-    if not host:
-        # If no host specified, maybe try to find a default one or just fail for now
-        # The user specifically asked for the one with ?host=LECTEUR Stape
-        # If we are automating, we might want to default to 'LECTEUR Stape' if available
-        # Check if we can find it in the source list
-        if 'LECTEUR Stape' in html:
-             host = 'LECTEUR Stape'
-        else:
-             # Just try to find ANY streamtape
-             pass
+    soup = BeautifulSoup(html, "html.parser")
 
-    # Find the sources object
-    # var thisChapterSources = { ... };
-    m = re.search(r'var\s+thisChapterSources\s*=\s*(\{.*?\});', html, re.DOTALL)
-    if not m:
-        raise ValueError("Could not find thisChapterSources in page")
-    
-    sources_json_str = m.group(1)
-    
-    try:
-        sources = json.loads(sources_json_str)
-    except json.JSONDecodeError:
-        # Fallback to regex if json parsing fails (e.g. trailing commas or loose keys)
-        # Search for "HOST_NAME":"<iframe src=\"URL\""
-        # We need to escape the host name for regex
-        if host:
-            host_esc = re.escape(host)
-            pattern = f'"{host_esc}"\s*:\s*"<iframe[^>]+src=\\\\"([^\\\\"]+)\\\\"'
-            m_src = re.search(pattern, sources_json_str)
-            if m_src:
-                return m_src.group(1).replace('\\/', '/')
-        raise ValueError(f"Could not parse sources JSON or find host '{host}'")
+    # User tip: use id="chapter-video-frame" > iframe
+    container = soup.find(id="chapter-video-frame")
+    if container:
+        iframe = container.find("iframe")
+        if iframe and iframe.get("src"):
+            print(f"- iframe url found: {iframe['src']}")
+            return iframe["src"]
 
-    if not host:
-        # Try to find Stape or Streamtape
-        for k in sources.keys():
-            if "Stape" in k or "Streamtape" in k:
-                host = k
-                break
-        if not host:
-            raise ValueError(f"No Streamtape host found. Available: {list(sources.keys())}")
+    # Fallback: check if direct iframe exists or other common patterns if the ID is wrong
+    # But prioritizing the user's specific instruction.
+    iframe = soup.select_one("iframe")
+    if iframe and "streamtape" in iframe.get("src", ""):
+        print(f"- iframe url found: {iframe['src']}")
+        return iframe["src"]
 
-    if host not in sources:
-        raise ValueError(f"Host '{host}' not found in sources. Available: {list(sources.keys())}")
-        
-    iframe_html = sources[host]
-    # Extract src from iframe
-    # <iframe src="https:\/\/streamtape.com\/e\/..." ...>
-    # Note: The JSON string has escaped slashes, but json.loads handles that.
-    # However, the HTML inside might still be escaped if it was double encoded, 
-    # but usually json.loads gives the string: <iframe src="https://streamtape.com/e/..." ...>
-    
-    m_iframe = re.search(r'src=["\']([^"\']+)["\']', iframe_html)
-    if not m_iframe:
-        raise ValueError(f"Could not find iframe src for host '{host}'")
-        
-    embed_url = m_iframe.group(1)
-    
-    # Check if it is a streamtape url
-    if "streamtape.com" not in embed_url:
-        # It might be normal if the user selected a non-streamtape host, 
-        # but here we expect streamtape.
-        # pass it anyway, maybe the caller checks.
-        pass
-        
-    return embed_url
+    raise ValueError("Could not find Streamtape iframe (checked #chapter-video-frame)")
