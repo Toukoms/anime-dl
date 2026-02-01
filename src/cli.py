@@ -71,6 +71,15 @@ def main():
         except Exception:
             pass
 
+        parsed_url = ""
+        if url.endswith("/"):
+            parsed_url = url[:-1]
+        else:
+            parsed_url = url
+        series_name = str(args.output or parsed_url.split("/")[-1])
+        if not series_name:
+            series_name = "Anime"  # Default fallback
+
         if is_main_page:
             print(f"Found {len(episodes)} episodes.")
             if not episodes:
@@ -81,16 +90,6 @@ def main():
             last_ep = episodes[-1][0]
             print(f"First Episode: {first_ep}")
             print(f"Last Episode: {last_ep}")
-
-            # Ask for Series Name
-            parsed_url = ""
-            if url.endswith("/"):
-                parsed_url = url[:-1]
-            else:
-                parsed_url = url
-            series_name = str(args.output) or parsed_url.split("/")[-1]
-            if not series_name:
-                series_name = "Anime"  # Default fallback
 
             start_ep = args.start
             if start_ep is None:
@@ -128,10 +127,6 @@ def main():
         else:
             # Assume single episode
             print("Detected single episode URL (or failed to parse main page).")
-            # Ask for Series Name and Ep num?
-            # For single episode, maybe just let it be, or ask.
-            # Let's ask to be consistent if they run it manually
-            series_name = input("Enter Series Name (for filename, optional): ").strip()
             ep_num = 0
             # Try to guess ep num from url?
             try:
@@ -143,8 +138,12 @@ def main():
                         break
             except:  # noqa: E722
                 pass
-
-            process_episode((ep_num, url), args.output, series_name=series_name)
+            full_url = url
+            if "?" in url:
+                full_url += "&host=LECTEUR%20Stape"
+            else:
+                full_url += "?host=LECTEUR%20Stape"
+            process_episode((ep_num, full_url), args.output, series_name=series_name)
 
     except KeyboardInterrupt:
         print("\n\nDownload cancelled by user.")

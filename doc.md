@@ -3,52 +3,97 @@
 This tool scrapes anime episodes from VoirAnime and downloads them from Streamtape.
 
 ## Features
+
 - **Sequential Download**: Automatically downloads all episodes starting from a chosen episode.
 - **Custom Naming**: Asks for the series name to generate clean filenames (e.g., `One Piece - Episode 01.mp4`).
-- **Resumable**: Skips already downloaded files (implementation dependent, basic check exists).
-- **Streamtape Support**: Extracts direct video links from Streamtape.
+- **Resumable Downloads**:
+  - Uses HTTP `Range` headers to resume interrupted downloads.
+  - Verifies file integrity using `Content-Length`.
+  - Handles `416 Range Not Satisfiable` responses gracefully.
+- **Robustness**:
+  - Retries on connection failures.
+  - Sanitizes filenames to be filesystem-safe.
+- **Streamtape Support**: Extracts direct video links from Streamtape by solving obfuscation.
 
 ## How it Works
 
 The extraction process involves several steps to bypass protections and get the direct video file.
 
-### 1. VoirAnime Extraction
-- The script fetches the VoirAnime episode page.
-- It looks for the Streamtape iframe.
-- **Technique**: It targets the `<iframe>` inside the element with `id="chapter-video-frame"`.
-- This provides the `embed` URL for Streamtape.
+### 1. VoirAnime Extraction (`src/extractors/voiranime.py`)
 
-### 2. Streamtape Extraction
-- The script fetches the Streamtape embed page.
-- It needs to find the token/redirect URL to the actual video file.
-- **Technique**: It looks for an element with `id="botlink"`.
-  - This element (often a `div` or `span`) contains the redirect URL, sometimes hidden in text or an `href`.
-  - Example: `//streamtape.com/get_video?id=...&token=...`
-- The script constructs the full URL and follows the redirect.
-- Streamtape redirects this link to the final `tapecontent.net` (or similar) URL which serves the `.mp4` file.
+- **Main Page**:
+  - Fetches the anime overview page.
+  - Parses all links to find episode URLs (matching the anime URL pattern).
+  - Sorts episodes by number.
+- **Episode Page**:
+  - Fetches the episode page.
+  - Looks for the Streamtape player iframe.
+  - **Target**: The `<iframe>` inside `#chapter-video-frame`.
 
-### 3. Downloading
-- The script uses the `requests` library to stream the video content.
-- It saves the file with the format: `{Series Name} - Episode {Number}.mp4`.
+### 2. Streamtape Extraction (`src/extractors/streamtape.py`)
+
+- The script fetches the Streamtape embed page found in the previous step.
+- **Obfuscation**: Streamtape hides the video token in a script tag that modifies the DOM.
+- **Technique**:
+  - Uses Regex to find the obfuscation pattern:  
+    `document.getElementById('botlink').innerHTML = 'PREFIX' + ('TOKEN_STRING').substring(OFFSET)`
+  - Reconstructs the full URL by combining the prefix and the substring of the token.
+  - Appends `&stream=1` to the URL.
+- **Redirect**:
+  - Performs a HEAD/GET request to the constructed URL (allowing redirects).
+  - The final destination (often `tapecontent.net`) is the direct `.mp4` link.
+
+### 3. Downloading (`src/utils.py`)
+
+- **Smart Download**:
+  - Checks if the file already exists and matches the remote size (skips if complete).
+  - If partial file exists, sends `Range: bytes=EXISTING_SIZE-` header to resume.
+- **Progress**: Displays a text-based progress bar with percentage and size downloaded.
 
 ## Usage
 
-1. **Install Dependencies**:
+### Installation
+
+1. **Install the package**:
+   Run this command in the project root:
+
    ```bash
-   pip install requests beautifulsoup4
+   pip install .
    ```
 
-2. **Run the Script**:
+   Or for development (editable mode):
+
    ```bash
-   python main.py "URL_TO_ANIME_PAGE"
-   ```
-   Example:
-   ```bash
-   python main.py "https://voiranime.com/anime/one-piece/"
+   pip install -e .
    ```
 
-3. **Follow Prompts**:
-   - Enter the **Series Name** (e.g., "One Piece").
-   - Enter the **Start Episode** number (defaults to the first available).
+2. **Run the CLI**:
+   The tool is installed as a global command `anime-dl`.
 
-The script will create a folder named after the series and download episodes into it.
+   ```bash
+   anime-dl "URL_TO_ANIME_PAGE"
+   ```
+
+   **Examples**:
+
+   _Download all episodes from a series:_
+
+   ```bash
+   anime-dl "https://voiranime.com/anime/one-piece/"
+   ```
+
+   _Download a specific single episode:_
+
+   ```bash
+   anime-dl "https://v6.voiranime.com/anime/one-piece/one-piece-1000-vostfr/"
+   ```
+
+3. **CLI Arguments**:
+   - `url`: The URL to the VoirAnime anime page or specific episode.
+   - `-o`, `--output`: (Optional) Output directory. Defaults to a folder named after the series.
+   - `-s`, `--start`: (Optional) Start downloading from this episode number (only for main page URLs).
+
+4. **Interactive Prompts**:
+   - If not provided via arguments, the script may ask for:
+     - **Series Name**: For naming files.
+     - **Start Episode**: To skip early episodes.
