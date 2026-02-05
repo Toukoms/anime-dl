@@ -40,12 +40,12 @@ pip install -e .
 
 ## Usage
 
-After installation, the `anime-dl` command will be available globally.
+After installation, the `vadl` command will be available globally.
 
 ### Basic Usage
 
 ```bash
-anime-dl <URL>
+vadl <URL>
 ```
 
 ### Examples
@@ -53,7 +53,7 @@ anime-dl <URL>
 **1. Download an entire series (or start from a specific episode):**
 
 ```bash
-anime-dl "https://voiranime.com/anime/one-piece/"
+vadl "https://voiranime.com/anime/one-piece/"
 ```
 
 - The script will detect all episodes.
@@ -63,18 +63,18 @@ anime-dl "https://voiranime.com/anime/one-piece/"
 **2. Download a single episode:**
 
 ```bash
-anime-dl "https://v6.voiranime.com/anime/one-piece/one-piece-1000-vostfr/"
+vadl "https://v6.voiranime.com/anime/one-piece/one-piece-1000-vostfr/"
 ```
 
 **3. Specify output directory and start episode via CLI:**
 
 ```bash
-anime-dl "https://voiranime.com/anime/one-piece/" --output "D:\Anime\One Piece" --start 1000
+vadl "https://voiranime.com/anime/one-piece/" --output "D:\Anime\One Piece" --start 1000
 ```
 
 ### Troubleshooting: "Command not found"
 
-If `anime-dl` works in the installation window but not in a new terminal, you need to add the Python user scripts folder to your PATH.
+If `vadl` works in the installation window but not in a new terminal, you need to add the Python user scripts folder to your PATH.
 
 **Windows**:
 

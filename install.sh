@@ -1,7 +1,7 @@
 #!/bin/bash
 
 echo "=========================================="
-echo "     Installing Anime-DL (anime-dl)"
+echo "     Installing Anime-DL (vadl)"
 echo "=========================================="
 echo ""
 
@@ -29,9 +29,9 @@ echo "       Installation Complete!"
 echo "=========================================="
 echo ""
 
-# Check if anime-dl is in PATH
-if ! command -v anime-dl &> /dev/null; then
-    echo "[WARNING] The 'anime-dl' command is not yet in your PATH."
+# Check if vadl is in PATH
+if ! command -v vadl &> /dev/null; then
+    echo "[WARNING] The 'vadl' command is not yet in your PATH."
     echo ""
     echo "You likely need to add the user bin directory to your PATH."
     echo "Common location: ~/.local/bin"
@@ -44,8 +44,8 @@ if ! command -v anime-dl &> /dev/null; then
     echo "For now, you can run the tool using:"
     echo "    python3 src/cli.py \"URL\""
 else
-    echo "Success! You can now run 'anime-dl' from anywhere."
+    echo "Success! You can now run 'vadl' from anywhere."
     echo ""
     echo "Example:"
-    echo "   anime-dl \"https://voiranime.com/anime/one-piece/\""
+    echo "   vadl \"https://voiranime.com/anime/one-piece/\""
 fi

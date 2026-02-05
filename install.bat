@@ -1,6 +1,6 @@
 @echo off
 echo ==========================================
-echo      Installing Anime-DL (anime-dl)
+echo      Installing Anime-DL (vadl)
 echo ==========================================
 echo.
 
@@ -32,10 +32,10 @@ echo        Installation Complete!
 echo ==========================================
 echo.
 
-:: Check if anime-dl is recognized
-where anime-dl >nul 2>&1
+:: Check if vadl is recognized
+where vadl >nul 2>&1
 if %errorlevel% neq 0 (
-    echo [WARNING] The 'anime-dl' command is not yet in your PATH.
+    echo [WARNING] The 'vadl' command is not yet in your PATH.
     echo.
     echo You likely need to add the Python Scripts folder to your Windows PATH.
     echo Common location: %%APPDATA%%\Python\Python313\Scripts\
@@ -44,10 +44,10 @@ if %errorlevel% neq 0 (
     echo    python src\cli.py "URL"
     echo.
 ) else (
-    echo Success! You can now run 'anime-dl' from anywhere.
+    echo Success! You can now run 'vadl' from anywhere.
     echo.
     echo Example:
-    echo    anime-dl "https://voiranime.com/anime/one-piece/"
+    echo    vadl "https://voiranime.com/anime/one-piece/"
 )
 
 echo.

@@ -68,10 +68,10 @@ The extraction process involves several steps to bypass protections and get the 
    ```
 
 2. **Run the CLI**:
-   The tool is installed as a global command `anime-dl`.
+   The tool is installed as a global command `vadl`.
 
    ```bash
-   anime-dl "URL_TO_ANIME_PAGE"
+   vadl "URL_TO_ANIME_PAGE"
    ```
 
    **Examples**:
@@ -79,13 +79,13 @@ The extraction process involves several steps to bypass protections and get the 
    _Download all episodes from a series:_
 
    ```bash
-   anime-dl "https://voiranime.com/anime/one-piece/"
+   vadl "https://voiranime.com/anime/one-piece/"
    ```
 
    _Download a specific single episode:_
 
    ```bash
-   anime-dl "https://v6.voiranime.com/anime/one-piece/one-piece-1000-vostfr/"
+   vadl "https://v6.voiranime.com/anime/one-piece/one-piece-1000-vostfr/"
    ```
 
 3. **CLI Arguments**:
