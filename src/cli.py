@@ -1,154 +1,137 @@
 import sys
 import argparse
-import os
+import logging
+from rich.console import Console
+from rich.logging import RichHandler
+from rich.prompt import Prompt
 
 from extractors.streamtape import extract as extract_streamtape
 from extractors.voiranime import get_streamtape_url, get_anime_episodes
-from utils import download_file, sanitize_filename
+from utils import sanitize_filename
+from core.downloader import SmartDownloader
 
 
-def process_episode(episode_data, output_dir, series_name=None):
-    """
-    Worker function to process a single episode.
-    episode_data is (episode_num, url)
-    """
-    ep_num, url = episode_data
-    print(f"\n[Ep {ep_num}] Processing...")
+class AnimeDL:
+    def __init__(self):
+        self.console = Console()
+        self.logger = logging.getLogger("anime-dl")
 
-    try:
-        # 1. Get Streamtape URL from VoirAnime page
-        streamtape_url = get_streamtape_url(url)
-
-        # 2. Get direct video URL from Streamtape
-        direct_url = extract_streamtape(streamtape_url)
-
-        # Construct filename
-        filename = None
-        if series_name:
-            filename = f"{series_name} ep{ep_num:02d}.mp4"
-            filename = sanitize_filename(filename)
-
-        # 3. Download
-        path = download_file(
-            direct_url, output_dir=output_dir, output_filename=filename
+    def _setup_logging(self, debug_mode):
+        level = logging.DEBUG if debug_mode else logging.INFO
+        logging.basicConfig(
+            level=level,
+            format="%(message)s",
+            datefmt="[%X]",
+            handlers=[RichHandler(console=self.console, rich_tracebacks=True)],
         )
-        if path:
-            print(f"[Ep {ep_num}] Downloaded to {path}")
-            return True
-        else:
-            print(f"[Ep {ep_num}] Download failed.")
-            return False
 
-    except KeyboardInterrupt:
-        raise
-    except Exception as e:
-        print(f"[Ep {ep_num}] Error: {e}")
-        return False
+    def _get_output_dir(self, args_output, series_name):
+        if args_output:
+            return args_output
+        return sanitize_filename(series_name)
 
-
-def main():
-    parser = argparse.ArgumentParser(
-        description="Scrape and download anime from voiranime"
-    )
-    parser.add_argument("url", help="URL to voiranime anime page or episode page")
-    parser.add_argument("-o", "--output", help="Output directory (optional)")
-    parser.add_argument(
-        "-s", "--start", type=int, help="Start downloading from this episode number"
-    )
-
-    args = parser.parse_args()
-    url = args.url
-
-    try:
-        # Determine if it's a main page or episode page
-        is_main_page = False
-        episodes = []
+    def _resolve_start_episode(self, first_ep, args_start):
+        if args_start is not None:
+            return args_start
 
         try:
-            episodes = get_anime_episodes(url)
-            if episodes:
-                is_main_page = True
-        except Exception:
+            val = Prompt.ask(
+                "Start download from episode",
+                default=str(first_ep),
+                console=self.console,
+            )
+            return int(val)
+        except ValueError:
+            self.console.print("[yellow]Invalid number. Starting from first.[/]")
+            return first_ep
+
+    def _process_episode(self, ep_data, output_dir, debug):
+        ep_num, url = ep_data
+        status = self.console.status(f"[cyan]Processing Episode {ep_num}[/]")
+        try:
+            status.start()
+            st_url = get_streamtape_url(url)
+            direct_url = extract_streamtape(st_url, debug)
+
+            if not direct_url:
+                self.console.print(
+                    f"[red]Failed to extract direct URL for Episode {ep_num}.[/]"
+                )
+                raise RuntimeError(f"Direct URL not found for Episode {ep_num}")
+
+            self.console.print(f"[green]Downloadable URL found for Episode {ep_num}")
+
+            status.update("[cyan]Start Downloading...")
+
+            dl = SmartDownloader(output_dir)
+            status.stop()
+            path, skipped = dl.download(direct_url, ep_num)
+
+            if skipped:
+                self.console.print(f"[yellow]Skipped (Exists): {path}[/]")
+            else:
+                self.console.print(f"[green]Downloaded: {path}[/]")
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed Ep {ep_num}: {e}")
+            self.logger.debug(e, exc_info=True)
+            return False
+
+    def _handle_series(self, url, args):
+        episodes = get_anime_episodes(url)
+        if not episodes:
+            self.console.print("[red]No episodes found.[/]")
+            return
+
+        first, last = episodes[0][0], episodes[-1][0]
+        self.console.print(
+            f"Found {len(episodes)} episodes (First: {first}, Last: {last})"
+        )
+
+        start_ep = self._resolve_start_episode(first, args.start)
+        to_download = [ep for ep in episodes if ep[0] >= start_ep]
+
+        series_name = args.output or url.rstrip("/").split("/")[-1] or "Anime"
+        output_dir = self._get_output_dir(args.output, series_name)
+
+        self.console.print(f"[bold]Queued {len(to_download)} episodes.[/]")
+        for ep in to_download:
+            self._process_episode(ep, output_dir, debug=args.debug)
+
+    def _handle_single_episode(self, url, args):
+        self.console.print("[bold]Detected single episode.[/]")
+        ep_num = 0
+        try:
+            parts = url.rstrip("/").split("-")
+            for p in reversed(parts):
+                if p.isdigit():
+                    ep_num = int(p)
+                    break
+        except ValueError:
             pass
 
-        parsed_url = ""
-        if url.endswith("/"):
-            parsed_url = url[:-1]
-        else:
-            parsed_url = url
-        series_name = str(args.output or parsed_url.split("/")[-1])
-        if not series_name:
-            series_name = "Anime"  # Default fallback
+        full_url = url + (
+            "&host=LECTEUR%20Stape" if "?" in url else "?host=LECTEUR%20Stape"
+        )
+        series_name = args.output or "Anime"
+        self._process_episode((ep_num, full_url), args.output or ".", series_name)
 
-        if is_main_page:
-            print(f"Found {len(episodes)} episodes.")
-            if not episodes:
-                print("No episodes found.")
-                return
+    def run(self):
+        parser = argparse.ArgumentParser(description="VoirAnime Downloader CLI")
+        parser.add_argument("url", help="URL to anime page")
+        parser.add_argument("-o", "--output", help="Output directory")
+        parser.add_argument("-s", "--start", type=int, help="Start episode")
+        parser.add_argument("--debug", action="store_true", help="Enable debug logs")
 
-            first_ep = episodes[0][0]
-            last_ep = episodes[-1][0]
-            print(f"First Episode: {first_ep}")
-            print(f"Last Episode: {last_ep}")
+        args = parser.parse_args()
+        self._setup_logging(args.debug)
 
-            start_ep = args.start
-            if start_ep is None:
-                try:
-                    val = input(f"Start download from episode [{first_ep}]: ").strip()
-                    if val:
-                        start_ep = int(val)
-                    else:
-                        start_ep = first_ep
-                except ValueError:
-                    print("Invalid number. Starting from first.")
-                    start_ep = first_ep
-
-            # Filter episodes
-            episodes_to_download = [ep for ep in episodes if ep[0] >= start_ep]
-            print(f"Queued {len(episodes_to_download)} episodes for download.")
-
-            # Determine output folder
-            output_dir = args.output
-            if not output_dir:
-                # Use series name as folder if not provided
-                output_dir = sanitize_filename(series_name)
-
-            if not os.path.exists(output_dir):
-                os.makedirs(output_dir)
-                print(f"Created output directory: {output_dir}")
-            else:
-                print(f"Saving to: {output_dir}")
-
-            # Sequential download
-            print("Starting sequential download (Press Ctrl+C to stop)...")
-            for ep in episodes_to_download:
-                process_episode(ep, output_dir, series_name=series_name)
-
-        else:
-            # Assume single episode
-            print("Detected single episode URL (or failed to parse main page).")
-            ep_num = 0
-            # Try to guess ep num from url?
+        try:
             try:
-                # voiranime urls often end in -123-vf
-                parts = url.rstrip("/").split("-")
-                for p in reversed(parts):
-                    if p.isdigit():
-                        ep_num = int(p)
-                        break
-            except:  # noqa: E722
-                pass
-            full_url = url
-            if "?" in url:
-                full_url += "&host=LECTEUR%20Stape"
-            else:
-                full_url += "?host=LECTEUR%20Stape"
-            process_episode((ep_num, full_url), args.output, series_name=series_name)
-
-    except KeyboardInterrupt:
-        print("\n\nDownload cancelled by user.")
-        sys.exit(0)
-
-
-if __name__ == "__main__":
-    main()
+                self._handle_series(args.url, args)
+            except Exception as e:
+                self.logger.debug(f"Not a series page: {e}")
+                self._handle_single_episode(args.url, args)
+        except KeyboardInterrupt:
+            self.console.print("\n[red]Cancelled by user.[/]")
+            sys.exit(0)
