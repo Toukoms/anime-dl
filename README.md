@@ -23,9 +23,10 @@ A command-line tool to batch download anime episodes from **VoirAnime** via **St
 
 1. Open a terminal in the project folder.
 2. Run the install script:
-   ```bash
-   bash install.sh
-   ```
+
+```bash
+  bash install.sh
+```
 
 ### Manual Install
 

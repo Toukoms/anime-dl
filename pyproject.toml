@@ -11,10 +11,14 @@ requires-python = ">=3.7"
 dependencies = [
     "requests",
     "beautifulsoup4",
+    "rich",
 ]
 
 [project.scripts]
-anime-dl = "cli:main"
+vadl = "main:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools]
+py-modules = ["cli", "main", "utils"]
