@@ -14,6 +14,8 @@ This tool allows me to:
 
 This project solves a **real personal problem**
 
+<img width="1854" height="962" alt="image" src="https://github.com/user-attachments/assets/55a72e8f-ace4-4250-9f2d-c9b456ccdbd7" />
+
 ## Features
 
 - **Batch Downloading**: Download entire series or specific ranges of episodes.
