@@ -2,6 +2,18 @@
 
 A command-line tool to batch download anime episodes from **VoirAnime** via **Streamtape**.
 
+## Why This Project Exists
+
+In my country, internet data is expensive and not always reliable.  
+Streaming anime online means waiting loading and paying again and again for the same content.
+
+This tool allows me to:
+- Download episodes once
+- Watch them offline anytime
+- Save bandwidth and money
+
+This project solves a **real personal problem**
+
 ## Features
 
 - **Batch Downloading**: Download entire series or specific ranges of episodes.
