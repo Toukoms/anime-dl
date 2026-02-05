@@ -2,7 +2,7 @@ import re
 import requests
 
 
-def extract(url) -> str:
+def extract(url: str, debug: bool) -> str:
     """
     Extracts the direct video URL from a Streamtape URL.
     Fetches the page, solves the obfuscation to get the /get_video URL,
@@ -57,11 +57,11 @@ def extract(url) -> str:
 
         if r.status_code in (301, 302, 303, 307, 308):
             redirect_url = r.headers.get("Location")
-            print(f"- direct link: {redirect_url}")
+            print(f"- direct link: {redirect_url}") if debug else ""
             return redirect_url
         else:
             # If no redirect, maybe the URL is already the direct link or something else
-            print(f"- direct link: {final_url}")
+            print(f"- direct link: {final_url}") if debug else ""
             return final_url
 
     except Exception as e:
