@@ -1,16 +1,17 @@
-import requests
+import httpx
 from bs4 import BeautifulSoup
 
 
-def _fetch(url):
+async def _fetch(url):
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) "
         "Chrome/91.0.4472.124 Safari/537.36"
     }
-    resp = requests.get(url, headers=headers)
-    resp.raise_for_status()
-    return resp.text
+    async with httpx.AsyncClient(headers=headers, follow_redirects=True) as client:
+        resp = await client.get(url)
+        resp.raise_for_status()
+        return resp.text
 
 
 def _extract_episode_number(url):
@@ -28,14 +29,14 @@ def _format_streamtape_url(url):
     return url + "?host=LECTEUR%20Stape"
 
 
-def get_anime_episodes(anime_url):
+async def get_anime_episodes(anime_url):
     """
     Parses an anime main page and returns a list of (episode_number, url).
     List is sorted by episode number.
     """
-    html = _fetch(anime_url)
+    html = await _fetch(anime_url)
     soup = BeautifulSoup(html, "html.parser")
-    
+
     if anime_url.endswith("/"):
         anime_url = anime_url[:-1]
 
@@ -57,8 +58,8 @@ def get_anime_episodes(anime_url):
     return episodes
 
 
-def get_streamtape_url(url):
-    html = _fetch(url)
+async def get_streamtape_url(url):
+    html = await _fetch(url)
     soup = BeautifulSoup(html, "html.parser")
 
     container = soup.find(id="chapter-video-frame")

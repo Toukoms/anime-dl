@@ -1,9 +1,10 @@
+import asyncio
 from cli import AnimeDL
 
 
 def main():
     app = AnimeDL()
-    app.run()
+    asyncio.run(app.run())
 
 
 if __name__ == "__main__":

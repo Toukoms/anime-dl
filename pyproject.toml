@@ -9,9 +9,9 @@ description = "VoirAnime Downloader CLI"
 readme = "README.md"
 requires-python = ">=3.7"
 dependencies = [
-    "requests",
     "beautifulsoup4",
     "rich",
+    "httpx",
 ]
 
 [project.scripts]

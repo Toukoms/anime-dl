@@ -1,9 +1,19 @@
 import sys
 import argparse
 import logging
+import asyncio
 from rich.console import Console
 from rich.logging import RichHandler
 from rich.prompt import Prompt
+from rich.progress import (
+    Progress,
+    SpinnerColumn,
+    BarColumn,
+    TextColumn,
+    DownloadColumn,
+    TransferSpeedColumn,
+    TimeRemainingColumn,
+)
 
 from extractors.streamtape import extract as extract_streamtape
 from extractors.voiranime import get_streamtape_url, get_anime_episodes
@@ -45,13 +55,25 @@ class AnimeDL:
             self.console.print("[yellow]Invalid number. Starting from first.[/]")
             return first_ep
 
-    def _process_episode(self, ep_data, output_dir, debug):
+    async def _process_episode(
+        self, ep_data, output_dir, debug, progress=None, semaphore=None
+    ):
         ep_num, url = ep_data
-        status = self.console.status(f"[cyan]Processing Episode {ep_num}[/]")
+
+        if semaphore:
+            async with semaphore:
+                return await self._do_process_episode(
+                    ep_num, url, output_dir, debug, progress
+                )
+        else:
+            return await self._do_process_episode(
+                ep_num, url, output_dir, debug, progress
+            )
+
+    async def _do_process_episode(self, ep_num, url, output_dir, debug, progress=None):
         try:
-            status.start()
-            st_url = get_streamtape_url(url)
-            direct_url = extract_streamtape(st_url, debug)
+            st_url = await get_streamtape_url(url)
+            direct_url = await extract_streamtape(st_url, debug)
 
             if not direct_url:
                 self.console.print(
@@ -59,13 +81,8 @@ class AnimeDL:
                 )
                 raise RuntimeError(f"Direct URL not found for Episode {ep_num}")
 
-            self.console.print(f"[green]Downloadable URL found for Episode {ep_num}")
-
-            status.update("[cyan]Start Downloading...")
-
             dl = SmartDownloader(output_dir)
-            status.stop()
-            path, skipped = dl.download(direct_url, ep_num)
+            path, skipped = await dl.download(direct_url, ep_num, progress)
 
             if skipped:
                 self.console.print(f"[yellow]Skipped (Exists): {path}[/]")
@@ -77,8 +94,8 @@ class AnimeDL:
             self.logger.debug(e, exc_info=True)
             return False
 
-    def _handle_series(self, url, args):
-        episodes = get_anime_episodes(url)
+    async def _handle_series(self, url, args):
+        episodes = await get_anime_episodes(url)
         if not episodes:
             self.console.print("[red]No episodes found.[/]")
             return
@@ -95,10 +112,25 @@ class AnimeDL:
         output_dir = self._get_output_dir(args.output, series_name)
 
         self.console.print(f"[bold]Queued {len(to_download)} episodes.[/]")
-        for ep in to_download:
-            self._process_episode(ep, output_dir, debug=args.debug)
 
-    def _handle_single_episode(self, url, args):
+        semaphore = asyncio.Semaphore(args.process)
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("{task.description}"),
+            BarColumn(),
+            DownloadColumn(),
+            TransferSpeedColumn(),
+            TimeRemainingColumn(),
+            console=self.console,
+        ) as progress:
+            tasks = [
+                self._process_episode(ep, output_dir, args.debug, progress, semaphore)
+                for ep in to_download
+            ]
+            await asyncio.gather(*tasks)
+
+    async def _handle_single_episode(self, url, args):
         self.console.print("[bold]Detected single episode.[/]")
         ep_num = 0
         try:
@@ -113,25 +145,39 @@ class AnimeDL:
         full_url = url + (
             "&host=LECTEUR%20Stape" if "?" in url else "?host=LECTEUR%20Stape"
         )
-        series_name = args.output or "Anime"
-        self._process_episode((ep_num, full_url), args.output or ".", series_name)
+        await self._process_episode((ep_num, full_url), args.output or ".", args.debug)
 
-    def run(self):
-        parser = argparse.ArgumentParser(description="VoirAnime Downloader CLI")
+    async def run(self):
+        parser = argparse.ArgumentParser(
+            prog="anime-dl", description="VoirAnime Downloader CLI"
+        )
         parser.add_argument("url", help="URL to anime page")
         parser.add_argument("-o", "--output", help="Output directory")
         parser.add_argument("-s", "--start", type=int, help="Start episode")
-        parser.add_argument("--debug", action="store_true", help="Enable debug logs")
+        parser.add_argument(
+            "-p",
+            "--process",
+            type=int,
+            default=3,
+            help="Number of simultaneous downloads",
+        )
+        parser.add_argument(
+            "--debug",
+            type=bool,
+            default=False,
+            action="store_true",
+            help="Enable debug logs",
+        )
 
         args = parser.parse_args()
         self._setup_logging(args.debug)
 
         try:
             try:
-                self._handle_series(args.url, args)
+                await self._handle_series(args.url, args)
             except Exception as e:
                 self.logger.debug(f"Not a series page: {e}")
-                self._handle_single_episode(args.url, args)
+                await self._handle_single_episode(args.url, args)
         except KeyboardInterrupt:
             self.console.print("\n[red]Cancelled by user.[/]")
             sys.exit(0)

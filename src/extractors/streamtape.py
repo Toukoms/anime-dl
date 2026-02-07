@@ -1,8 +1,8 @@
 import re
-import requests
+import httpx
 
 
-def extract(url: str, debug: bool) -> str:
+async def extract(url: str, debug: bool) -> str:
     """
     Extracts the direct video URL from a Streamtape URL.
     Fetches the page, solves the obfuscation to get the /get_video URL,
@@ -13,56 +13,57 @@ def extract(url: str, debug: bool) -> str:
     }
 
     try:
-        response = requests.get(url, headers=headers, timeout=10)
-        response.raise_for_status()
-        html = response.text
+        async with httpx.AsyncClient(headers=headers, timeout=10) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+            html = response.text
 
-        # Regex to capture the obfuscation logic for botlink
-        # Pattern: document.getElementById('botlink').innerHTML = 'PREFIX' + ('TOKEN_STRING').substring(OFFSET);
-        # Example: document.getElementById('botlink').innerHTML = '//streamtape.com/get_v'+ ('xyzaideo?id=...').substring(4);
+            # Regex to capture the obfuscation logic for botlink
+            # Pattern: document.getElementById('botlink').innerHTML = 'PREFIX' + ('TOKEN_STRING').substring(OFFSET);
+            # Example: document.getElementById('botlink').innerHTML = '//streamtape.com/get_v'+ ('xyzaideo?id=...').substring(4);
 
-        pattern = r"document\.getElementById\('botlink'\)\.innerHTML\s*=\s*['\"](.*?)['\"]\s*\+\s*\(['\"]([^'\"]+)['\"]\)\.substring\(\s*(\d+)\s*\)"
+            pattern = r"document\.getElementById\('botlink'\)\.innerHTML\s*=\s*['\"](.*?)['\"]\s*\+\s*\(['\"]([^'\"]+)['\"]\)\.substring\(\s*(\d+)\s*\)"
 
-        match = re.search(pattern, html)
-        if not match:
-            # Fallback or error
-            print(
-                "Error: Could not find botlink obfuscation pattern in Streamtape page."
+            match = re.search(pattern, html)
+            if not match:
+                # Fallback or error
+                print(
+                    "Error: Could not find botlink obfuscation pattern in Streamtape page."
+                )
+                return None
+
+            prefix = match.group(1)
+            token_string = match.group(2)
+            offset = int(match.group(3))
+
+            real_token = token_string[offset:]
+            full_url_path = prefix + real_token
+
+            # Ensure it starts with https:
+            if full_url_path.startswith("//"):
+                full_url = "https:" + full_url_path
+            elif full_url_path.startswith("/"):
+                full_url = "https://streamtape.com" + full_url_path
+            else:
+                full_url = full_url_path
+
+            # Add &stream=1 to trigger the redirect to the video file
+            final_url = full_url + "&stream=1"
+
+            # Follow the redirect to get the actual video URL (tapecontent.net)
+            # We use stream=True to avoid downloading the content
+            r = await client.get(
+                final_url, follow_redirects=False, timeout=10
             )
-            return None
 
-        prefix = match.group(1)
-        token_string = match.group(2)
-        offset = int(match.group(3))
-
-        real_token = token_string[offset:]
-        full_url_path = prefix + real_token
-
-        # Ensure it starts with https:
-        if full_url_path.startswith("//"):
-            full_url = "https:" + full_url_path
-        elif full_url_path.startswith("/"):
-            full_url = "https://streamtape.com" + full_url_path
-        else:
-            full_url = full_url_path
-
-        # Add &stream=1 to trigger the redirect to the video file
-        final_url = full_url + "&stream=1"
-
-        # Follow the redirect to get the actual video URL (tapecontent.net)
-        # We use stream=True to avoid downloading the content
-        r = requests.get(
-            final_url, headers=headers, allow_redirects=False, stream=True, timeout=10
-        )
-
-        if r.status_code in (301, 302, 303, 307, 308):
-            redirect_url = r.headers.get("Location")
-            print(f"- direct link: {redirect_url}") if debug else ""
-            return redirect_url
-        else:
-            # If no redirect, maybe the URL is already the direct link or something else
-            print(f"- direct link: {final_url}") if debug else ""
-            return final_url
+            if r.status_code in (301, 302, 303, 307, 308):
+                redirect_url = r.headers.get("Location")
+                print(f"- direct link: {redirect_url}") if debug else ""
+                return redirect_url
+            else:
+                # If no redirect, maybe the URL is already the direct link or something else
+                print(f"- direct link: {final_url}") if debug else ""
+                return final_url
 
     except Exception as e:
         print(f"Error extracting Streamtape URL: {e}")
