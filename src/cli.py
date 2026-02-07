@@ -178,6 +178,5 @@ class AnimeDL:
             except Exception as e:
                 self.logger.debug(f"Not a series page: {e}")
                 await self._handle_single_episode(args.url, args)
-        except KeyboardInterrupt:
+        except (KeyboardInterrupt, asyncio.CancelledError):
             self.console.print("\n[red]Cancelled by user.[/]")
-            sys.exit(0)
