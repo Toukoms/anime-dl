@@ -1,4 +1,3 @@
-import sys
 import argparse
 import logging
 import asyncio
@@ -35,6 +34,11 @@ class AnimeDL:
             handlers=[RichHandler(console=self.console, rich_tracebacks=True)],
         )
 
+        # Suppress httpx and httpcore logs unless in debug mode
+        if not debug_mode:
+            logging.getLogger("httpx").setLevel(logging.WARNING)
+            logging.getLogger("httpcore").setLevel(logging.WARNING)
+
     def _get_output_dir(self, args_output, series_name):
         if args_output:
             return args_output
@@ -62,10 +66,14 @@ class AnimeDL:
             output_dir=".", max_concurrent=args.process, player_code=args.player
         )
 
+        fetch_status = self.console.status("[bold]Fetching episodes...[/]")
+        fetch_status.start()
         episodes = await orchestrator.get_series_episodes(url)
         if not episodes:
             self.console.print("[red]No episodes found.[/]")
             return
+
+        fetch_status.stop()
 
         first, last = episodes[0].number, episodes[-1].number
         self.console.print(

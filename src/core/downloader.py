@@ -57,7 +57,7 @@ class SmartDownloader:
         return local_size, "ab"
 
     async def _perform_download(
-        self, url, path, resume_byte, total_size, progress=None
+        self, url, path, resume_byte, total_size, ep_num: int, progress=None
     ):
         headers = self.headers.copy()
         if resume_byte > 0:
@@ -71,7 +71,7 @@ class SmartDownloader:
                 with open(path, mode) as f:
                     if progress:
                         task = progress.add_task(
-                            f"[green]Downloading {os.path.basename(path)}",
+                            f"[green]Downloading ep{ep_num:02d}",
                             total=total_size,
                             completed=resume_byte,
                         )
@@ -79,7 +79,7 @@ class SmartDownloader:
                             f.write(chunk)
                             progress.update(task, advance=len(chunk))
                     else:
-                        console.print(f"[blue]Downloading: {os.path.basename(path)}")
+                        console.print(f"[blue]Downloading ep{ep_num:02d}")
                         with Progress(
                             SpinnerColumn(),
                             TextColumn("{task.description}"),
@@ -118,7 +118,7 @@ class SmartDownloader:
                     return output_path, True
 
                 await self._perform_download(
-                    url, output_path, resume_byte, remote_size, progress
+                    url, output_path, resume_byte, remote_size, ep_num, progress
                 )
                 return output_path, False
             except Exception as e:

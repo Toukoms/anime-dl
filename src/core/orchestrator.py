@@ -7,22 +7,30 @@ from core.downloader import SmartDownloader
 from core.config import SupportedPlayers
 from extractors.platforms.voiranime import VoirAnimePlatform
 from extractors.players.streamtape import StreamtapePlayer
+from rich.console import Console
 
 logger = logging.getLogger(__name__)
+console = Console()
+
 
 class Orchestrator:
-    def __init__(self, output_dir: str, max_concurrent: int = 3, player_code: str = SupportedPlayers.STREAMTAPE):
+    def __init__(
+        self,
+        output_dir: str,
+        max_concurrent: int = 3,
+        player_code: str = SupportedPlayers.STREAMTAPE,
+    ):
         self.output_dir = output_dir
         self.semaphore = asyncio.Semaphore(max_concurrent)
         self.player_code = player_code
-        
+
         # Registry of available platforms and players
         self.platform: Platform = VoirAnimePlatform(preferred_player=player_code)
-        
+
         # Load available players
         # Ideally this should be dynamic, but for now we register manually
         self.players: List[VideoPlayer] = []
-        
+
         # Register Streamtape player
         if player_code == SupportedPlayers.STREAMTAPE:
             self.players.append(StreamtapePlayer())
@@ -44,26 +52,38 @@ class Orchestrator:
         async with self.semaphore:
             try:
                 # 1. Get player URL
+                status = console.status(
+                    f"[bold]Fetching player URL for {episode.name}...[/]"
+                )
+                status.start()
                 player_url = await episode.get_player_url()
                 if not player_url:
                     logger.error(f"Could not find player URL for {episode.name}")
+                    status.stop()
                     return False
 
+                status.update(f"[bold]Extracting direct URL for {episode.name}...[/]")
                 # 2. Find compatible player and extract direct URL
                 direct_url = await self._extract_direct_url(player_url)
                 if not direct_url:
-                    logger.error(f"Could not extract direct URL for {episode.name} from {player_url}")
+                    logger.error(
+                        f"Could not extract direct URL for {episode.name} from {player_url}"
+                    )
                     return False
+                status.stop()
 
                 # 3. Download
                 downloader = SmartDownloader(self.output_dir)
-                path, skipped = await downloader.download(direct_url, episode.number, progress)
-                
+                path, skipped = await downloader.download(
+                    direct_url, episode.number, progress
+                )
+
                 if skipped:
                     logger.info(f"Skipped {episode.name} (already exists): {path}")
                 else:
                     logger.info(f"Downloaded {episode.name}: {path}")
-                
+
+                status.stop()
                 return True
 
             except Exception as e:
@@ -77,9 +97,14 @@ class Orchestrator:
         for player in self.players:
             # We check if the player name matches the preference or if it can handle the URL
             # For now, simple check based on URL content vs player type
-            if isinstance(player, StreamtapePlayer) and "streamtape" in player_url.lower():
-                 return await player.extract_direct_url(player_url)
+            if (
+                isinstance(player, StreamtapePlayer)
+                and "streamtape" in player_url.lower()
+            ):
+                return await player.extract_direct_url(player_url)
             # Future players logic
-        
-        logger.warning(f"No suitable player found for URL: {player_url} (Configured player: {self.player_code})")
+
+        logger.warning(
+            f"No suitable player found for URL: {player_url} (Configured player: {self.player_code})"
+        )
         return None
