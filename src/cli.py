@@ -15,16 +15,16 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 
-from extractors.streamtape import extract as extract_streamtape
-from extractors.voiranime import get_streamtape_url, get_anime_episodes
 from utils import sanitize_filename
-from core.downloader import SmartDownloader
+from core.orchestrator import Orchestrator
+from core.config import SupportedPlayers
+from extractors.platforms.voiranime import VoirAnimeEpisode
 
 
 class AnimeDL:
     def __init__(self):
         self.console = Console()
-        self.logger = logging.getLogger("anime-dl")
+        self.logger = logging.getLogger(__name__)
 
     def _setup_logging(self, debug_mode):
         level = logging.DEBUG if debug_mode else logging.INFO
@@ -55,65 +55,35 @@ class AnimeDL:
             self.console.print("[yellow]Invalid number. Starting from first.[/]")
             return first_ep
 
-    async def _process_episode(
-        self, ep_data, output_dir, debug, progress=None, semaphore=None
-    ):
-        ep_num, url = ep_data
-
-        if semaphore:
-            async with semaphore:
-                return await self._do_process_episode(
-                    ep_num, url, output_dir, debug, progress
-                )
-        else:
-            return await self._do_process_episode(
-                ep_num, url, output_dir, debug, progress
-            )
-
-    async def _do_process_episode(self, ep_num, url, output_dir, debug, progress=None):
-        try:
-            st_url = await get_streamtape_url(url)
-            direct_url = await extract_streamtape(st_url, debug)
-
-            if not direct_url:
-                self.console.print(
-                    f"[red]Failed to extract direct URL for Episode {ep_num}.[/]"
-                )
-                raise RuntimeError(f"Direct URL not found for Episode {ep_num}")
-
-            dl = SmartDownloader(output_dir)
-            path, skipped = await dl.download(direct_url, ep_num, progress)
-
-            if skipped:
-                self.console.print(f"[yellow]Skipped (Exists): {path}[/]")
-            else:
-                self.console.print(f"[green]Downloaded: {path}[/]")
-            return True
-        except Exception as e:
-            self.logger.error(f"Failed Ep {ep_num}: {e}")
-            self.logger.debug(e, exc_info=True)
-            return False
-
     async def _handle_series(self, url, args):
-        episodes = await get_anime_episodes(url)
+        # Initialize Orchestrator with temporary output dir (will be updated)
+        # We need to fetch episodes first to know the series name or just use URL
+        orchestrator = Orchestrator(
+            output_dir=".", max_concurrent=args.process, player_code=args.player
+        )
+
+        episodes = await orchestrator.get_series_episodes(url)
         if not episodes:
             self.console.print("[red]No episodes found.[/]")
             return
 
-        first, last = episodes[0][0], episodes[-1][0]
+        first, last = episodes[0].number, episodes[-1].number
         self.console.print(
             f"Found {len(episodes)} episodes (First: {first}, Last: {last})"
         )
 
         start_ep = self._resolve_start_episode(first, args.start)
-        to_download = [ep for ep in episodes if ep[0] >= start_ep]
+        to_download = [ep for ep in episodes if ep.number >= start_ep]
 
         series_name = args.output or url.rstrip("/").split("/")[-1] or "Anime"
         output_dir = self._get_output_dir(args.output, series_name)
 
-        self.console.print(f"[bold]Queued {len(to_download)} episodes.[/]")
+        # Update orchestrator output dir
+        orchestrator.output_dir = output_dir
 
-        semaphore = asyncio.Semaphore(args.process)
+        self.console.print(
+            f"[bold]Queued {len(to_download)} episodes (Player: {args.player}).[/]"
+        )
 
         with Progress(
             SpinnerColumn(),
@@ -124,10 +94,7 @@ class AnimeDL:
             TimeRemainingColumn(),
             console=self.console,
         ) as progress:
-            tasks = [
-                self._process_episode(ep, output_dir, args.debug, progress, semaphore)
-                for ep in to_download
-            ]
+            tasks = [orchestrator.download_episode(ep, progress) for ep in to_download]
             await asyncio.gather(*tasks)
 
     async def _handle_single_episode(self, url, args):
@@ -142,10 +109,38 @@ class AnimeDL:
         except ValueError:
             pass
 
-        full_url = url + (
-            "&host=LECTEUR%20Stape" if "?" in url else "?host=LECTEUR%20Stape"
+        # We construct the URL with the correct host based on player preference
+        full_url = url
+        host_param = ""
+        if args.player == SupportedPlayers.STREAMTAPE:
+            host_param = "host=LECTEUR%20Stape"
+
+        if host_param:
+            separator = "&" if "?" in url else "?"
+            full_url = f"{url}{separator}{host_param}"
+
+        episode = VoirAnimeEpisode(
+            number=ep_num,
+            name=f"Episode {ep_num}",
+            url=full_url,
+            player_code=args.player,
         )
-        await self._process_episode((ep_num, full_url), args.output or ".", args.debug)
+
+        orchestrator = Orchestrator(
+            output_dir=args.output or ".", max_concurrent=1, player_code=args.player
+        )
+
+        # We need a progress context even for single download to show bars
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("{task.description}"),
+            BarColumn(),
+            DownloadColumn(),
+            TransferSpeedColumn(),
+            TimeRemainingColumn(),
+            console=self.console,
+        ) as progress:
+            await orchestrator.download_episode(episode, progress)
 
     async def run(self):
         parser = argparse.ArgumentParser(
@@ -162,9 +157,14 @@ class AnimeDL:
             help="Number of simultaneous downloads",
         )
         parser.add_argument(
+            "--player",
+            type=str,
+            default=SupportedPlayers.STREAMTAPE.value,
+            choices=[p.value for p in SupportedPlayers],
+            help="Video player to use (default: streamtape)",
+        )
+        parser.add_argument(
             "--debug",
-            type=bool,
-            default=False,
             action="store_true",
             help="Enable debug logs",
         )

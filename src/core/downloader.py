@@ -56,7 +56,9 @@ class SmartDownloader:
 
         return local_size, "ab"
 
-    async def _perform_download(self, url, path, resume_byte, total_size, progress=None):
+    async def _perform_download(
+        self, url, path, resume_byte, total_size, progress=None
+    ):
         headers = self.headers.copy()
         if resume_byte > 0:
             headers["Range"] = f"bytes={resume_byte}-"
@@ -103,7 +105,9 @@ class SmartDownloader:
 
         for attempt in range(self.max_retries + 1):
             try:
-                async with httpx.AsyncClient(headers=self.headers, follow_redirects=True) as client:
+                async with httpx.AsyncClient(
+                    headers=self.headers, follow_redirects=True
+                ) as client:
                     r = await client.head(url)
                     remote_size = int(r.headers.get("Content-Length", 0))
                     final_name = self._get_filename(r, url, filename)
@@ -113,7 +117,9 @@ class SmartDownloader:
                 if resume_byte == -1:
                     return output_path, True
 
-                await self._perform_download(url, output_path, resume_byte, remote_size, progress)
+                await self._perform_download(
+                    url, output_path, resume_byte, remote_size, progress
+                )
                 return output_path, False
             except Exception as e:
                 if attempt < self.max_retries:
