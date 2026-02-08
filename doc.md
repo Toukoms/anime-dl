@@ -4,22 +4,30 @@ This tool scrapes anime episodes from VoirAnime and downloads them from Streamta
 
 ## Features
 
-- **Sequential Download**: Automatically downloads all episodes starting from a chosen episode.
-- **Custom Naming**: Asks for the series name to generate clean filenames (e.g., `One Piece - Episode 01.mp4`).
+- **Concurrent Downloads**: Uses `asyncio` and `Semaphore` to download multiple episodes at once (default: 3).
+- **Custom Naming**: Automatically generates filenames based on the anime title and episode number.
 - **Resumable Downloads**:
   - Uses HTTP `Range` headers to resume interrupted downloads.
   - Verifies file integrity using `Content-Length`.
   - Handles `416 Range Not Satisfiable` responses gracefully.
 - **Robustness**:
-  - Retries on connection failures.
+  - Retries on connection failures (default: 3 retries).
   - Sanitizes filenames to be filesystem-safe.
 - **Streamtape Support**: Extracts direct video links from Streamtape by solving obfuscation.
+- **Modern UI**: Uses `rich` for progress bars, spinners, and formatted logging.
 
 ## How it Works
 
-The extraction process involves several steps to bypass protections and get the direct video file.
+The tool is built with a modular architecture that separates platform logic (fetching episodes) from player logic (extracting video links).
 
-### 1. VoirAnime Extraction (`src/extractors/voiranime.py`)
+### 1. Orchestration (`src/core/orchestrator.py`)
+
+The `Orchestrator` is the central brain of the tool. It:
+- Manages the concurrency limit using an `asyncio.Semaphore`.
+- Coordinates the flow between platforms, players, and the downloader.
+- Registers available platforms (like `VoirAnimePlatform`) and players (like `StreamtapePlayer`).
+
+### 2. VoirAnime Extraction (`src/extractors/platforms/voiranime.py`)
 
 - **Main Page**:
   - Fetches the anime overview page.
@@ -27,10 +35,10 @@ The extraction process involves several steps to bypass protections and get the 
   - Sorts episodes by number.
 - **Episode Page**:
   - Fetches the episode page.
-  - Looks for the Streamtape player iframe.
+  - Looks for the preferred player (default: Streamtape).
   - **Target**: The `<iframe>` inside `#chapter-video-frame`.
 
-### 2. Streamtape Extraction (`src/extractors/streamtape.py`)
+### 3. Streamtape Extraction (`src/extractors/players/streamtape.py`)
 
 - The script fetches the Streamtape embed page found in the previous step.
 - **Obfuscation**: Streamtape hides the video token in a script tag that modifies the DOM.
@@ -43,12 +51,14 @@ The extraction process involves several steps to bypass protections and get the 
   - Performs a HEAD/GET request to the constructed URL (allowing redirects).
   - The final destination (often `tapecontent.net`) is the direct `.mp4` link.
 
-### 3. Downloading (`src/utils.py`)
+### 4. Downloading (`src/core/downloader.py`)
 
-- **Smart Download**:
+- **Smart Downloader**:
   - Checks if the file already exists and matches the remote size (skips if complete).
-  - If partial file exists, sends `Range: bytes=EXISTING_SIZE-` header to resume.
-- **Progress**: Displays a text-based progress bar with percentage and size downloaded.
+  - If a partial file exists, sends a `Range: bytes=EXISTING_SIZE-` header to resume.
+  - If the existing file is larger than the remote size, it re-downloads from scratch to avoid corruption.
+- **Progress**: Displays detailed progress bars for each download using `rich.progress`.
+- **Retries**: Implements an exponential backoff-like retry mechanism (default: 3 retries with a 5s delay).
 
 ## Usage
 
@@ -92,6 +102,9 @@ The extraction process involves several steps to bypass protections and get the 
    - `url`: The URL to the VoirAnime anime page or specific episode.
    - `-o`, `--output`: (Optional) Output directory. Defaults to a folder named after the series.
    - `-s`, `--start`: (Optional) Start downloading from this episode number (only for main page URLs).
+   - `-p`, `--process`: (Optional) Number of simultaneous downloads (default: 3).
+   - `--player`: (Optional) Video player to use (choices: `streamtape`, default: `streamtape`).
+   - `--debug`: (Optional) Enable debug logging.
 
 4. **Interactive Prompts**:
    - If not provided via arguments, the script may ask for:

@@ -8,6 +8,7 @@ In my country, internet data is expensive and not always reliable.
 Streaming anime online means waiting loading and paying again and again for the same content.
 
 This tool allows me to:
+
 - Download episodes once
 - Watch them offline anytime
 - Save bandwidth and money
@@ -19,8 +20,9 @@ This project solves a **real personal problem**
 ## Features
 
 - **Batch Downloading**: Download entire series or specific ranges of episodes.
+- **Concurrent Processing**: Supports downloading multiple episodes simultaneously (default: 3).
 - **Smart Resume**: Supports resuming interrupted downloads using `Range` headers.
-- **Sequential Processing**: Downloads episodes one by one.
+- **Modern UI**: Beautiful progress bars and status updates powered by `rich`.
 - **Direct Extraction**: Bypasses Streamtape obfuscation to get direct `.mp4` links.
 
 ## Installation
@@ -73,15 +75,21 @@ vadl "https://voiranime.com/anime/one-piece/"
 
 - The script will detect all episodes.
 - It will ask you which episode to start from (default: first available).
-- It will ask for a series name to prefix filenames (e.g., "One Piece").
+- It will use the anime title from the URL for the output directory.
 
-**2. Download a single episode:**
+**2. Download with specific concurrency and player:**
+
+```bash
+vadl "https://voiranime.com/anime/one-piece/" --process 5 --player streamtape
+```
+
+**3. Download a single episode:**
 
 ```bash
 vadl "https://v6.voiranime.com/anime/one-piece/one-piece-1000-vostfr/"
 ```
 
-**3. Specify output directory and start episode via CLI:**
+**4. Specify output directory and start episode via CLI:**
 
 ```bash
 vadl "https://voiranime.com/anime/one-piece/" --output "D:\Anime\One Piece" --start 1000
@@ -109,11 +117,12 @@ Then run `source ~/.bashrc` (or `.zshrc`).
 
 ## Project Structure
 
-- `src/cli.py`: Entry point and orchestration logic.
+- `src/cli.py`: Entry point and CLI orchestration.
+- `src/core/`: Core logic including the orchestrator, downloader, and configuration.
 - `src/extractors/`:
-  - `voiranime.py`: Scrapes episode links and finds Streamtape iframes.
-  - `streamtape.py`: Solves Streamtape obfuscation to extract video links.
-- `src/utils.py`: Handles file downloading (resume, progress bar) and filename sanitization.
+  - `platforms/`: Site-specific logic (e.g., `voiranime.py`) to fetch episodes.
+  - `players/`: Video player logic (e.g., `streamtape.py`) to extract direct links.
+- `src/utils.py`: Utility functions for filename sanitization and more.
 - `doc.md`: Detailed technical documentation.
 
 ## Disclaimer
