@@ -10,7 +10,7 @@ from extractors.players.streamtape import StreamtapePlayer
 from rich.console import Console
 
 logger = logging.getLogger(__name__)
-console = Console()
+_console = Console()
 
 
 class Orchestrator:
@@ -49,10 +49,11 @@ class Orchestrator:
         """
         Orchestrates the download of a single episode.
         """
+        current_console = progress.console if progress else _console
         async with self.semaphore:
             try:
                 # 1. Get player URL
-                status = console.status(
+                status = current_console.status(
                     f"[bold]Fetching player URL for {episode.name}...[/]"
                 )
                 status.start()
@@ -69,6 +70,7 @@ class Orchestrator:
                     logger.error(
                         f"Could not extract direct URL for {episode.name} from {player_url}"
                     )
+                    status.stop()
                     return False
                 status.stop()
 
@@ -79,11 +81,18 @@ class Orchestrator:
                 )
 
                 if skipped:
-                    logger.info(f"Skipped {episode.name} (already exists): {path}")
+                    if progress:
+                        progress.console.print(
+                            f"[yellow]⚠[/] {episode.name} already exists."
+                        )
+                    else:
+                        logger.info(f"Skipped {episode.name} (already exists): {path}")
                 else:
-                    logger.info(f"Downloaded {episode.name}: {path}")
+                    if progress:
+                        progress.console.print(f"[green]✔[/] {episode.name} finished.")
+                    else:
+                        logger.info(f"Downloaded {episode.name}: {path}")
 
-                status.stop()
                 return True
 
             except Exception as e:

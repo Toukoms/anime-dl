@@ -34,10 +34,14 @@ class AnimeDL:
             handlers=[RichHandler(console=self.console, rich_tracebacks=True)],
         )
 
-        # Suppress httpx and httpcore logs unless in debug mode
+        # Suppress noisy loggers unless in debug mode
         if not debug_mode:
             logging.getLogger("httpx").setLevel(logging.WARNING)
             logging.getLogger("httpcore").setLevel(logging.WARNING)
+            logging.getLogger("hpack").setLevel(logging.WARNING)
+            # Ensure orchestrator and downloader don't spam INFO logs during progress
+            logging.getLogger("core.orchestrator").setLevel(logging.WARNING)
+            logging.getLogger("core.downloader").setLevel(logging.WARNING)
 
     def _get_output_dir(self, args_output, series_name):
         if args_output:

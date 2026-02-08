@@ -15,7 +15,7 @@ from rich.progress import (
 )
 from rich.console import Console
 
-console = Console()
+_console = Console()
 
 
 class SmartDownloader:
@@ -57,13 +57,13 @@ class SmartDownloader:
         return local_size, "ab"
 
     async def _perform_download(
-        self, url, path, resume_byte, total_size, ep_num: int, progress=None
+        self, url, path, resume_byte, total_size, ep_num: int, progress=None, mode=None
     ):
+        if not mode and resume_byte == total_size:
+            return
         headers = self.headers.copy()
         if resume_byte > 0:
             headers["Range"] = f"bytes={resume_byte}-"
-
-        mode = "ab" if resume_byte > 0 else "wb"
 
         async with httpx.AsyncClient(headers=headers, timeout=30) as client:
             async with client.stream("GET", url) as r:
@@ -79,7 +79,7 @@ class SmartDownloader:
                             f.write(chunk)
                             progress.update(task, advance=len(chunk))
                     else:
-                        console.print(f"[blue]Downloading ep{ep_num:02d}")
+                        _console.print(f"[blue]Downloading ep{ep_num:02d}")
                         with Progress(
                             SpinnerColumn(),
                             TextColumn("{task.description}"),
@@ -87,6 +87,7 @@ class SmartDownloader:
                             DownloadColumn(),
                             TransferSpeedColumn(),
                             TimeRemainingColumn(),
+                            console=_console,
                         ) as inner_progress:
                             task = inner_progress.add_task(
                                 "[green]Downloading ",
@@ -118,13 +119,18 @@ class SmartDownloader:
                     return output_path, True
 
                 await self._perform_download(
-                    url, output_path, resume_byte, remote_size, ep_num, progress
+                    url, output_path, resume_byte, remote_size, ep_num, progress, mode
                 )
+
                 return output_path, False
             except Exception as e:
                 if attempt < self.max_retries:
-                    console.print(f"[yellow]Error: {e}. Retrying in 5s...[/]")
+                    error_console = progress.console if progress else _console
+                    error_console.print(f"[yellow]Error: {e}. Retrying in 5s...[/]")
                     await asyncio.sleep(5)
                 else:
-                    console.print(f"[red]Failed after {self.max_retries} attempts.[/]")
+                    error_console = progress.console if progress else _console
+                    error_console.print(
+                        f"[red]Failed after {self.max_retries} attempts.[/]"
+                    )
                     raise e
