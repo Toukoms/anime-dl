@@ -6,9 +6,41 @@ echo "=========================================="
 echo ""
 
 # Check for python3
-if ! command -v python3 &> /dev/null; then
-    echo "Error: python3 is not found!"
-    echo "Please install Python 3."
+# Find python command
+PYTHON_CMD=""
+if command -v python3 &> /dev/null; then
+    PYTHON_CMD="python3"
+elif command -v python &> /dev/null; then
+    # Check that "python" is indeed Python 3
+    MAJOR=$(python --version 2>&1 | awk '{print $2}' | cut -d. -f1)
+    if [ "$MAJOR" -eq 3 ]; then
+        PYTHON_CMD="python"
+    fi
+fi
+
+if [ -z "$PYTHON_CMD" ]; then
+    echo Error: Python 3 is not found!
+    echo Please install Python from https://www.python.org/
+    echo and make sure to add Python to PATH
+    exit 1
+fi
+
+# Find pip command
+PIP_CMD=""
+if command -v pip3 &> /dev/null; then
+    PIP_CMD="pip3"
+elif command -v pip &> /dev/null; then
+    PIP_CMD="pip"
+elif $PYTHON_CMD -m pip --version &> /dev/null; then
+    PIP_CMD="$PYTHON_CMD -m pip"
+fi
+
+if [ -z "$PIP_CMD" ]; then
+    echo "Error: pip is not found!"
+    echo "Please install pip by running:"
+    echo "    $PYTHON_CMD -m ensurepip --upgrade"
+    echo ""
+    echo "Checked: 'pip3', 'pip', and '$PYTHON_CMD -m pip'"
     exit 1
 fi
 
